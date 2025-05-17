@@ -1,0 +1,3 @@
+# Ignore all Excel files
+*.xlsx
+doc.sty
