@@ -106,6 +106,14 @@ with open('service_point_coverage.json', 'w') as f:
     }
     json.dump(json_data, f)
 
+
 print("\nResults saved to service_point_coverage.json")
+
+# Also dump mapping of each service point to its nearest network node
+with open('sp_to_network_node.json', 'w') as f:
+    # Keys as strings for JSON compatibility, values as plain ints
+    json.dump({str(int(sp)): int(node) for sp, node in sp_nodes.items()}, f)
+
+print("Results saved to sp_to_network_node.json")
 
 
