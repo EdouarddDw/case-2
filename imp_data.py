@@ -135,6 +135,8 @@ def load_maastricht_data(
     deliveries_raw = pd.read_excel(xls, sheet_name="At-home Deliveries")
     deliveries_df = deliveries_raw.melt(id_vars=deliveries_raw.columns[0], var_name="sp_id", value_name="deliveries")
     deliveries_df.rename(columns={deliveries_df.columns[0]: "day"}, inplace=True)
+    # Rename 'deliveries' to 'parcels' for consistency with the heuristic model
+    deliveries_df.rename(columns={"deliveries": "parcels"}, inplace=True)
     deliveries_df["sp_id"] = deliveries_df["sp_id"].astype(str)
 
     pickups_raw = pd.read_excel(xls, sheet_name="Service Point Parcels Picked Up")
@@ -145,14 +147,35 @@ def load_maastricht_data(
     # Build square-to-square distance lookup
     edges_df.rename(columns=lambda c: snake(c), inplace=True)
 
-    return {
+    loaded_data = {
         "nodes": nodes_df,
         "edges": edges_df,
         "cbs": cbs_df,
         "service_points": sp_df,
-        "deliveries": deliveries_df,
+        "deliveries": deliveries_df, # This will now have the 'parcels' column
         "pickups": pickups_df,
     }
+    
+    # Add all_potential_sps to the loaded_data dictionary
+    potential_sps_file_path = "data/all_potential_service_points.csv"
+    try:
+        all_potential_sps_df = pd.read_csv(potential_sps_file_path)
+        if 'capacity' not in all_potential_sps_df.columns:
+            # Assuming DEFAULT_SP_CAPACITY is defined globally in imp_data or use a literal
+            # For safety, let's use a literal if not sure it's defined in this scope.
+            # You might want to pass DEFAULT_SP_CAPACITY from heuristics_model or define it in imp_data.
+            default_capacity_value = 100 # Fallback, align with DEFAULT_SP_CAPACITY in heuristics model
+            all_potential_sps_df['capacity'] = default_capacity_value
+        all_potential_sps_df['sp_id'] = all_potential_sps_df['sp_id'].astype(str)
+        loaded_data['all_potential_sps'] = all_potential_sps_df
+    except FileNotFoundError:
+        print(f"Warning: {potential_sps_file_path} not found. 'all_potential_sps' will be an empty DataFrame.")
+        loaded_data['all_potential_sps'] = pd.DataFrame(columns=['sp_id', 'x_rd', 'y_rd', 'capacity'])
+    except Exception as e:
+        print(f"Error loading {potential_sps_file_path}: {e}. 'all_potential_sps' will be an empty DataFrame.")
+        loaded_data['all_potential_sps'] = pd.DataFrame(columns=['sp_id', 'x_rd', 'y_rd', 'capacity'])
+
+    return loaded_data
 
 if __name__ == "__main__":
     data = load_maastricht_data()
