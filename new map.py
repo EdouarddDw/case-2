@@ -31,8 +31,8 @@ sp_nodes = {}
 for _, sp in service_points.iterrows():
     # Calculate distance to all nodes
     distances = np.sqrt((nodes['x_rd'] - sp['x_rd'])**2 + (nodes['y_rd'] - sp['y_rd'])**2)
-    nearest_node_idx = distances.idxmin()
-    nearest_node = nodes.iloc[nearest_node_idx]['node_id']
+    nearest_node_pos = distances.to_numpy().argmin()  # integer position of the nearest node
+    nearest_node = nodes.iloc[nearest_node_pos]['node_id']
     sp_nodes[sp['sp_id']] = nearest_node
 
 # Generate distinct colors for each service point

@@ -33,8 +33,16 @@ sp_nodes = {}
 for _, sp in service_points.iterrows():
     # Calculate distance to all nodes
     distances = np.sqrt((nodes['x_rd'] - sp['x_rd'])**2 + (nodes['y_rd'] - sp['y_rd'])**2)
+    # Handle all-NaN distances
+    if distances.isna().all():
+        print(f"Warning: All distances are NaN for service point {sp['sp_id']}. Skipping.")
+        continue
     nearest_node_idx = distances.idxmin()
-    nearest_node = nodes.iloc[nearest_node_idx]['node_id']
+    # If idxmin returns NaN, skip
+    if pd.isna(nearest_node_idx):
+        print(f"Warning: Could not determine nearest node index for service point {sp['sp_id']}. Skipping.")
+        continue
+    nearest_node = nodes.loc[nearest_node_idx]['node_id']
     sp_nodes[sp['sp_id']] = nearest_node
 
 # Run multiple Dijkstra algorithms simultaneously
@@ -145,16 +153,23 @@ for _, sp_info in service_points.iterrows():
     # Get the CBS square for this service point
     # First find the nearest node to this service point
     distances = np.sqrt((nodes['x_rd'] - sp_info['x_rd'])**2 + (nodes['y_rd'] - sp_info['y_rd'])**2)
-    nearest_node_idx = distances.idxmin()
-    nearest_node = nodes.iloc[nearest_node_idx]
-    
-    # Get the CBS square of this node
-    cbs_square = nearest_node['cbs_square']
+    # Handle all-NaN distances
+    if distances.isna().all():
+        print(f"Warning: All distances are NaN for service point {sp_id}. Using default home value.")
+        cbs_square = None
+    else:
+        nearest_node_idx = distances.idxmin()
+        if pd.isna(nearest_node_idx):
+            print(f"Warning: Could not find nearest node for service point {sp_id}. Using default home value.")
+            cbs_square = None
+        else:
+            nearest_node = nodes.loc[nearest_node_idx]
+            cbs_square = nearest_node['cbs_square']
     
     # Find the home value for this square
-    square_data = cbs[cbs['cbs_square'] == cbs_square]
-    # source thatvproofs the multiplier idea:
-    #https://walterliving.com/nl/en/city/maastricht
+    square_data = cbs[cbs['cbs_square'] == cbs_square] if cbs_square is not None else pd.DataFrame()
+    # source that proofs the multiplier idea:
+    # https://walterliving.com/nl/en/city/maastricht
     if not square_data.empty and home_value_column is not None:
         if home_value_column in square_data.columns:
             avg_home_value = square_data[home_value_column].values[0]
@@ -192,7 +207,15 @@ print(f"{'Service Point':<15}{'CBS Square':<15}{'Home Value (k€)':<18}{'Multip
 print("-" * 80)
 
 for sp_id, sp_cost in sp_yearly_costs.items():
-    print(f"{sp_id:<15}{sp_cost['cbs_square']:<15}{sp_cost.get('avg_home_value', 'N/A'):<18.2f}{sp_cost['cost_multiplier']:<12.2f}{sp_cost['yearly_cost_€']:<15.2f}{sp_cost['nodes_covered']:<15}")
+    # Handle possible None for CBS square
+    cbs_sq = sp_cost['cbs_square'] if sp_cost['cbs_square'] is not None else 'N/A'
+    # Handle possible missing avg_home_value
+    avg_home = sp_cost.get('avg_home_value', None)
+    if avg_home is not None:
+        avg_home_str = f"{avg_home:<18.2f}"
+    else:
+        avg_home_str = f"{'N/A':<18}"
+    print(f"{sp_id:<15}{cbs_sq:<15}{avg_home_str}{sp_cost['cost_multiplier']:<12.2f}{sp_cost['yearly_cost_€']:<15.2f}{sp_cost['nodes_covered']:<15}")
 
 print("=" * 80)
 print(f"Total yearly cost for all service points: €{total_yearly_cost:,.2f}")
@@ -214,23 +237,30 @@ cost_df.index.name = 'service_point_id'
 cost_df.to_csv('service_point_yearly_costs.csv')
 print("\nResults saved to service_point_yearly_costs.csv")
 
-# Create a visualization of costs vs. coverage
+# Create a visualization of costs vs. total pickups
 plt.figure(figsize=(10, 6))
-x = [data['nodes_covered'] for data in sp_yearly_costs.values()]
-y = [data['yearly_cost_€'] for data in sp_yearly_costs.values()]
+# Extract total pickups for each service point
+total_pickups = [
+    service_points.loc[service_points['sp_id'] == sp_id, 'total_pickups'].values[0]
+    for sp_id in sp_yearly_costs.keys()
+]
+# Yearly costs
+yearly_costs = [data['yearly_cost_€'] for data in sp_yearly_costs.values()]
 labels = list(sp_yearly_costs.keys())
 
-plt.scatter(x, y, s=100, alpha=0.7)
+plt.scatter(total_pickups, yearly_costs, s=100, alpha=0.7)
 
 # Add labels to each point
 for i, label in enumerate(labels):
-    plt.annotate(label, (x[i], y[i]), textcoords="offset points", 
-                 xytext=(0,10), ha='center')
+    plt.annotate(label, (total_pickups[i], yearly_costs[i]), textcoords="offset points",
+                 xytext=(0, 10), ha='center')
 
-plt.xlabel('Number of Nodes Covered')
+plt.xlabel('Total Pickups')
 plt.ylabel('Yearly Cost (€)')
-plt.title('Service Point Yearly Cost vs. Coverage')
+plt.title('Service Point Yearly Cost vs. Total Pickups')
 plt.grid(True, alpha=0.3)
+# Set x-axis maximum to 50,000
+plt.xlim(0, 55000)
 plt.tight_layout()
-plt.savefig('service_point_cost_analysis.png', dpi=300)
+plt.savefig('service_point_cost_vs_pickups.png', dpi=300)
 plt.show()

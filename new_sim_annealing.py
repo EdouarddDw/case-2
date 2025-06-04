@@ -111,6 +111,7 @@ print(distance_matrix.head())
 
 # add a binary variable to each service point indicating if it is opened or not (intitial value is true)
 service_points['opened'] = True
+service_points['manager_sp_id'] = service_points['sp_id_int']
 
 # add a variable to each service point indicating capacity (inittial value is the max pickup  of that service point)
 max_pickup = pickup.groupby('sp_id')['pickups'].max().reset_index()
@@ -136,6 +137,8 @@ print(service_points.head())
 
 #convert demand for closed stores
 def convert_demand_for_closed_stores(service_points, distance_matrix):
+    # Every SP manages itself by default
+    service_points['manager_sp_id'] = service_points['sp_id_int']
     # if a service point is closed, attribute its demand to the nearest open service point
     # Store original deliveries and pickups in base columns
     service_points['base_deliveries'] = service_points['total_deliveries']
@@ -151,6 +154,8 @@ def convert_demand_for_closed_stores(service_points, distance_matrix):
             if open_service_points.empty:
                 continue
             nearest_id = distances[open_service_points['sp_id_int'].values].idxmin()
+            # Record which service point now manages this closed SP
+            service_points.at[i, 'manager_sp_id'] = nearest_id
             # Map sp_id_int back to the positional index in the original DataFrame
             nearest_row_idx = service_points[service_points["sp_id_int"] == nearest_id].index[0]
             at_home = 0
@@ -171,6 +176,7 @@ def convert_demand_for_closed_stores(service_points, distance_matrix):
             # For open service points, retain their original deliveries and pickups
             service_points.at[i, 'total_deliveries'] += sp['base_deliveries']
             service_points.at[i, 'total_pickups'] += sp['base_pickups']
+            service_points.at[i, 'manager_sp_id'] = sp['sp_id_int']
     return service_points
     
 
@@ -210,9 +216,9 @@ def mutate(service_points: pd.DataFrame) -> pd.DataFrame:
 # Simulated Annealing function
 def simulated_annealing(
     initial_service_points: pd.DataFrame,
-    initial_temperature: float = 1000000.0,
+    initial_temperature: float = 1000.0,
     cooling_rate: float = 0.99 ,
-    max_iterations: int = 100000
+    max_iterations: int = 1000
 ) -> pd.DataFrame:
     current_solution = initial_service_points.copy()
     current_cost = sum(calculate_cost(sp) for _, sp in current_solution.iterrows())
@@ -227,6 +233,8 @@ def simulated_annealing(
             print(f"Iteration {iteration}, Current Cost: {current_cost}, Best Cost: {best_cost}, Temperature: {temperature}")
         # Mutate the solution
         new_solution = mutate(current_solution)
+        # Recalculate demand distribution and costs for all closed stores
+        new_solution = convert_demand_for_closed_stores(new_solution, distance_matrix)
         new_cost = sum(calculate_cost(sp) for _, sp in new_solution.iterrows())
         
         # Calculate acceptance probability
@@ -246,7 +254,7 @@ def simulated_annealing(
                 best_cost = current_cost
         
         # Cool down the temperature
-        temperature = 100000/ (1 + iteration)
+        temperature = 10000/ (1 + iteration)
         
     return best_solution, best_cost
     
@@ -260,3 +268,8 @@ print(best_solution[['sp_id', 'opened', 'capacity', 'total_deliveries', 'total_p
 print(f"Initial Cost: {initial_cost}")
 
 print(f"Best Cost: {best_cost}")
+
+#savve the best solution to a CSV file
+best_solution_file = Path("data/best_service_points_solution.csv")
+best_solution.to_csv(best_solution_file, index=False)
+print(f"Best solution saved to {best_solution_file}")
