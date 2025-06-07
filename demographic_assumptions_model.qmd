@@ -1,0 +1,140 @@
+---
+title: "demographic_assumptions_model"
+format: html
+editor: visual
+---
+
+## Demographic assumptions model
+
+Home delivery (default):
+
+-   older people (age 65+)
+
+-   higher-income households
+
+-   possibly suburban/less mobile populations
+
+Service point pickup:
+
+-   Middle-aged adults (25-64)
+
+-   people with moderate income
+
+-   likely to combine pickup with errrands
+
+Automated Parcel Lockers (APLs)
+
+-   younger adults (15-44)
+
+-   tech-savy and busy people
+
+-   low-to-middle income and urban areas
+
+-   areas with more independence
+
+Install and load packages:
+
+```{r}
+# install.packages(c("dplyr", "readxl"))
+library(dplyr)
+library(readxl)
+library(ggplot2)
+```
+
+Load the cleaned CBS Squares data and prepare dataset:
+
+```{r}
+# Load the Excel file
+data <- read_excel("/Users/app/Desktop/case-2-main/CBS_Squares_cleaned.xlsx", skip = 1)
+
+# Rename columns for clarity
+data <- data %>%
+  rename(
+    square = 1,
+    population = Population,
+    age_0_14 = `Age0.14`,
+    age_15_24 = `Age15.24`,
+    age_25_44 = `Age25.44`,
+    age_45_64 = `Age45.64`,
+    age_65_plus = `Age65.`,
+    income_bracket = `Median.household.income`,
+    x = X,
+    y = Y
+  )
+
+# Convert numeric columns
+cols_to_numeric <- c("population", "age_0_14", "age_15_24", "age_25_44",
+                     "age_45_64", "age_65_plus", "x", "y")
+data[cols_to_numeric] <- lapply(data[cols_to_numeric], as.numeric)
+```
+
+Define the city center of Maastricht (centroid of points 4387, 5499, 4431, 4987):
+
+```{r}
+city_center <- c(x = mean(c(55134, 51393, 66641, 67529)),
+                 y = mean(c(39885, 53765, 48763, 44080)))
+```
+
+Closer to center = urban, further from center = suburban
+
+Compute the distance to city center (urban vs suburban proxy):
+
+```{r}
+data <- data %>%
+  mutate(
+    dist_to_center = sqrt((x - city_center["x"])^2 + (y - city_center["y"])^2),
+    urban = ifelse(dist_to_center < 25000, "urban", "suburban")
+  )
+```
+
+Assign delivery preference based on assumptions:
+
+```{r}
+data <- data %>%
+  rowwise() %>%
+  mutate(
+    delivery_preference = case_when(
+      # APL preference
+      (age_15_24 + age_25_44) > population * 0.3 &
+        income_bracket %in% c("20-40 below middle", "20-60 below middle to middle", "60-80 above middle") &
+        urban == "urban" ~ "apl",
+
+      # Service point preference
+      age_45_64 > population * 0.25 &
+        income_bracket %in% c("60-80 above middle", "60-100 above middle to high") ~ "service_point",
+
+      # Home delivery preference
+      age_65_plus > population * 0.2 |
+        income_bracket %in% c("80-100 high", "60-100 high") |
+        urban == "suburban" ~ "home",
+
+      # Default
+      TRUE ~ "home"
+    )
+  ) %>%
+  ungroup()
+
+# Summary of preferences
+table(data$delivery_preference)
+
+# Save results
+ write.csv(data, "/Users/app/Desktop/delivery_preferences_by_square.csv", row.names = FALSE)
+```
+
+```{r}
+summary(data$dist_to_center[data$delivery_preference == "apl"])
+
+```
+
+## Visualisations 
+
+```{r}
+ggplot(data, aes(x = x, y = y, color = delivery_preference)) +
+  geom_point(size = 2, alpha = 0.8) +
+  scale_color_manual(values = c("home" = "firebrick", "service_point" = "steelblue", "apl" = "forestgreen")) +
+  theme_minimal() +
+  labs(
+    title = "Predicted Delivery Preference by CBS Square (Maastricht)",
+    x = "X Coordinate", y = "Y Coordinate", color = "Delivery Type"
+  )
+```

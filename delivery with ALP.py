@@ -736,9 +736,9 @@ if 'top_apl_node_ids' in locals() and top_apl_node_ids:
     ax.scatter(
         apl_nodes_coords['x_rd'],
         apl_nodes_coords['y_rd'],
-        s=300,  # increased size for visibility
+        s=600,  # increased size for visibility
         marker='*',
-        color='gold',
+        color='green',
         edgecolors='black',
         linewidths=1.2,
         alpha=0.95,

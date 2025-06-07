@@ -237,6 +237,14 @@ cost_df.index.name = 'service_point_id'
 cost_df.to_csv('service_point_yearly_costs.csv')
 print("\nResults saved to service_point_yearly_costs.csv")
 
+# Export selected data to fixed_cost.cvs
+fixed_cost_df = pd.DataFrame([
+    {'service_point_id': sp_id, 'yearly_cost': sp_cost['yearly_cost_€'], 'nodes_covered': sp_cost['nodes_covered']}
+    for sp_id, sp_cost in sp_yearly_costs.items()
+])
+fixed_cost_df.to_csv('fixed_cost.csv', index=False)
+print("\nSelected data saved to fixed_cost.csv")
+
 # Create a visualization of costs vs. total pickups
 plt.figure(figsize=(10, 6))
 # Extract total pickups for each service point

@@ -1,0 +1,51 @@
+---
+title: "Cleaning_data_knn"
+format: html
+editor: visual
+---
+
+## Cleaning data with KNN imputation 
+
+```{r}
+# Load required packages
+library(readxl)
+library(dplyr)
+library(VIM)
+
+# Load and prepare data
+df <- read_excel("/Users/app/Desktop/case 2/CBS Squares.xlsx", sheet = "Sheet1")
+names(df) <- make.names(names(df))  # Make column names safe
+
+# Define ID and feature columns
+non_feature_cols <- c("Square", "X", "Y")
+feature_cols <- setdiff(names(df), non_feature_cols)
+
+# Remove completely empty rows (excluding ID columns)
+df_cleaned <- df %>%
+  filter(!if_all(all_of(feature_cols), is.na))
+
+# Remove rows with fewer than 5 non-NA feature values
+df_cleaned <- df_cleaned %>%
+  filter(rowSums(!is.na(select(., all_of(feature_cols)))) >= 5)
+
+# Add a 'completeness' score = number of non-NA feature values
+df_cleaned$completeness <- rowSums(!is.na(df_cleaned[, feature_cols]))
+
+# Duplicate rows based on their completeness score 
+#    Normalize scores to get between 1 and max_dups
+max_dups <- 3
+duplication_weights <- ceiling((df_cleaned$completeness / max(df_cleaned$completeness)) * max_dups)
+df_expanded <- df_cleaned[rep(1:nrow(df_cleaned), times = duplication_weights), ]
+
+# Drop helper column
+df_expanded$completeness <- NULL
+
+# Run KNN imputation on the expanded dataset
+df_imputed <- kNN(df_expanded, variable = feature_cols, k = 5, imp_var = FALSE)
+
+# Remove duplicated rows, keep only original row indices (first n unique rows of original data)
+df_result <- df_imputed[!duplicated(df_imputed[, non_feature_cols]), ]
+
+# 9. (Optional) Save to CSV
+write.csv(df_result, "cleaned_squares_data.csv", row.names = FALSE)
+```
